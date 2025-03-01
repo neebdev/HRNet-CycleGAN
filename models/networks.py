@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from torch.nn import init
+import torch.nn.utils.spectral_norm as SN
 import functools
 from torch.optim import lr_scheduler
 
@@ -217,6 +218,8 @@ def define_D(input_nc, ndf, netD, n_layers_D=3, norm='batch', init_type='normal'
         net = NLayerDiscriminator(input_nc, ndf, n_layers=3, norm_layer=norm_layer)
     elif netD == 'n_layers':  # more options
         net = NLayerDiscriminator(input_nc, ndf, n_layers_D, norm_layer=norm_layer)
+    elif netD == 'n_layers_sn':  # more options
+        net = NLayerDiscriminatorSN(input_nc, ndf, n_layers_D)
     elif netD == 'pixel':     # classify if each pixel is real or fake
         net = PixelDiscriminator(input_nc, ndf, norm_layer=norm_layer)
     else:
@@ -600,6 +603,53 @@ class NLayerDiscriminator(nn.Module):
         ]
 
         sequence += [nn.Conv2d(ndf * nf_mult, 1, kernel_size=kw, stride=1, padding=padw)]  # output 1 channel prediction map
+        self.model = nn.Sequential(*sequence)
+
+    def forward(self, input):
+        """Standard forward."""
+        return self.model(input)
+
+class NLayerDiscriminatorSN(nn.Module):
+    """Defines a PatchGAN discriminator with Spectral Normalization"""
+
+    def __init__(self, input_nc, ndf=64, n_layers=3):
+        """Construct a PatchGAN discriminator with Spectral Normalization
+
+        Parameters:
+            input_nc (int)  -- number of channels in input images
+            ndf (int)       -- number of filters in the first conv layer
+            n_layers (int)  -- number of conv layers in the discriminator
+        """
+        super(NLayerDiscriminatorSN, self).__init__()
+
+        kw = 4
+        padw = 1
+
+        sequence = [
+            SN(nn.Conv2d(input_nc, ndf, kernel_size=kw, stride=2, padding=padw)),
+            nn.LeakyReLU(0.2, True)
+        ]
+
+        nf_mult = 1
+        nf_mult_prev = 1
+
+        for n in range(1, n_layers):
+            nf_mult_prev = nf_mult
+            nf_mult = min(2 ** n, 8)
+            sequence += [
+                SN(nn.Conv2d(ndf * nf_mult_prev, ndf * nf_mult, kernel_size=kw, stride=2, padding=padw, bias=True)),
+                nn.LeakyReLU(0.2, True)
+            ]
+
+        nf_mult_prev = nf_mult
+        nf_mult = min(2 ** n_layers, 8)
+        sequence += [
+            SN(nn.Conv2d(ndf * nf_mult_prev, ndf * nf_mult, kernel_size=kw, stride=1, padding=padw, bias=True)),
+            nn.LeakyReLU(0.2, True)
+        ]
+
+        sequence += [SN(nn.Conv2d(ndf * nf_mult, 1, kernel_size=kw, stride=1, padding=padw))]
+
         self.model = nn.Sequential(*sequence)
 
     def forward(self, input):
