@@ -689,7 +689,8 @@ class MultiScaleDiscriminator(nn.Module):
             results.append(self.discriminators[i](x))
             if i != self.num_D - 1:
                 x = self.downsample(x)
-        return results
+        merged_result = torch.cat(results, dim=1)
+        return merged_result
 
 class PixelDiscriminator(nn.Module):
     """Defines a 1x1 PatchGAN discriminator (pixelGAN)"""
