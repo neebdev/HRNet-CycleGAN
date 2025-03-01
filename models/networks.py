@@ -7,6 +7,7 @@ from torch.optim import lr_scheduler
 
 from models.hrnet import HighResolutionNet
 from models.configs.hrnet_config import MODEL_CONFIGS
+import torch.nn.functional as F
 
 
 ###############################################################################
@@ -689,7 +690,12 @@ class MultiScaleDiscriminator(nn.Module):
             results.append(self.discriminators[i](x))
             if i != self.num_D - 1:
                 x = self.downsample(x)
-        merged_result = torch.stack(results, dim=0) 
+                
+        target_size = results[0].shape[-2:]  # Use the first tensor's height & width
+        results = [F.interpolate(r, size=target_size, mode="bilinear", align_corners=False) for r in results]
+
+        # Merge the results
+        merged_result = torch.cat(results, dim=1)
         return merged_result
 
 class PixelDiscriminator(nn.Module):
