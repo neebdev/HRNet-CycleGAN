@@ -220,6 +220,8 @@ def define_D(input_nc, ndf, netD, n_layers_D=3, norm='batch', init_type='normal'
         net = NLayerDiscriminator(input_nc, ndf, n_layers_D, norm_layer=norm_layer)
     elif netD == 'n_layers_sn':  # more options
         net = NLayerDiscriminatorSN(input_nc, ndf, n_layers_D)
+    elif netD == 'multiscale':  # more options
+        net = MultiScaleDiscriminator(input_nc, ndf, n_layers_D, num_D=3)
     elif netD == 'pixel':     # classify if each pixel is real or fake
         net = PixelDiscriminator(input_nc, ndf, norm_layer=norm_layer)
     else:
@@ -610,20 +612,20 @@ class NLayerDiscriminator(nn.Module):
         return self.model(input)
 
 class NLayerDiscriminatorSN(nn.Module):
-    """Defines a PatchGAN discriminator with Spectral Normalization"""
+    """PatchGAN Discriminator with Spectral Normalization"""
 
-    def __init__(self, input_nc, ndf=64, n_layers=3):
-        """Construct a PatchGAN discriminator with Spectral Normalization
-
+    def __init__(self, input_nc, ndf=64, n_layers=3, use_large_receptive_field=False):
+        """
         Parameters:
-            input_nc (int)  -- number of channels in input images
-            ndf (int)       -- number of filters in the first conv layer
-            n_layers (int)  -- number of conv layers in the discriminator
+            input_nc (int)  -- Number of input channels
+            ndf (int)       -- Number of filters in the first conv layer
+            n_layers (int)  -- Number of conv layers
+            use_large_receptive_field (bool) -- Whether to use larger receptive fields at lower resolutions
         """
         super(NLayerDiscriminatorSN, self).__init__()
 
-        kw = 4
-        padw = 1
+        kw = 4 if not use_large_receptive_field else 7
+        padw = 1 if not use_large_receptive_field else 3
 
         sequence = [
             SN(nn.Conv2d(input_nc, ndf, kernel_size=kw, stride=2, padding=padw)),
@@ -652,10 +654,42 @@ class NLayerDiscriminatorSN(nn.Module):
 
         self.model = nn.Sequential(*sequence)
 
-    def forward(self, input):
-        """Standard forward."""
-        return self.model(input)
+    def forward(self, x):
+        return self.model(x)
 
+
+class MultiScaleDiscriminator(nn.Module):
+    """Multi-Scale PatchGAN Discriminator with Spectral Normalization"""
+
+    def __init__(self, input_nc, ndf=64, n_layers=3, num_D=3):
+        """
+        Parameters:
+            input_nc (int)  -- Number of input channels
+            ndf (int)       -- Number of filters in the first conv layer
+            n_layers (int)  -- Number of conv layers in each discriminator
+            num_D (int)     -- Number of discriminators at different scales
+        """
+        super(MultiScaleDiscriminator, self).__init__()
+
+        self.num_D = num_D
+        self.discriminators = nn.ModuleList()
+
+        for i in range(num_D):
+            use_large_receptive_field = (i == num_D - 1)
+            self.discriminators.append(NLayerDiscriminatorSN(input_nc, ndf, n_layers, use_large_receptive_field))
+
+        self.downsample = SN(nn.Conv2d(input_nc, input_nc, kernel_size=3, stride=2, padding=1, bias=False))
+
+    def forward(self, x):
+        """
+        Forward pass through all discriminators at different scales
+        """
+        results = []
+        for i in range(self.num_D):
+            results.append(self.discriminators[i](x))
+            if i != self.num_D - 1:
+                x = self.downsample(x)
+        return results
 
 class PixelDiscriminator(nn.Module):
     """Defines a 1x1 PatchGAN discriminator (pixelGAN)"""
