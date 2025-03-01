@@ -689,7 +689,7 @@ class MultiScaleDiscriminator(nn.Module):
             results.append(self.discriminators[i](x))
             if i != self.num_D - 1:
                 x = self.downsample(x)
-        merged_result = torch.cat(results, dim=1)
+        merged_result = torch.stack(results, dim=0) 
         return merged_result
 
 class PixelDiscriminator(nn.Module):
