@@ -4,6 +4,9 @@ from torch.nn import init
 import functools
 from torch.optim import lr_scheduler
 
+from models.hrnet import HighResolutionNet
+from models.configs.hrnet_config import MODEL_CONFIGS
+
 
 ###############################################################################
 # Helper Functions
@@ -76,6 +79,15 @@ def init_weights(net, init_type='normal', init_gain=0.02):
     We use 'normal' in the original pix2pix and CycleGAN paper. But xavier and kaiming might
     work better for some applications. Feel free to try yourself.
     """
+    def hrnet_init(m):
+        """HRNet-specific initialization"""
+        if isinstance(m, nn.Conv2d):
+            nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+        elif isinstance(m, nn.BatchNorm2d):
+            nn.init.constant_(m.weight, 1)
+            nn.init.constant_(m.bias, 0)
+
+
     def init_func(m):  # define the initialization function
         classname = m.__class__.__name__
         if hasattr(m, 'weight') and (classname.find('Conv') != -1 or classname.find('Linear') != -1):
@@ -94,9 +106,11 @@ def init_weights(net, init_type='normal', init_gain=0.02):
         elif classname.find('BatchNorm2d') != -1:  # BatchNorm Layer's weight is not a matrix; only normal distribution applies.
             init.normal_(m.weight.data, 1.0, init_gain)
             init.constant_(m.bias.data, 0.0)
-
-    print('initialize network with %s' % init_type)
-    net.apply(init_func)  # apply the initialization function <init_func>
+            
+    if isinstance(net, HighResolutionNet):
+        net.apply(hrnet_init)
+    else:
+        net.apply(init_func)  # apply the initialization function <init_func>
 
 
 def init_net(net, init_type='normal', init_gain=0.02, gpu_ids=[]):
@@ -155,6 +169,12 @@ def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, in
         net = UnetGenerator(input_nc, output_nc, 7, ngf, norm_layer=norm_layer, use_dropout=use_dropout)
     elif netG == 'unet_256':
         net = UnetGenerator(input_nc, output_nc, 8, ngf, norm_layer=norm_layer, use_dropout=use_dropout)
+    elif netG == 'hrnet18':
+        net = HighResolutionNet(MODEL_CONFIGS["hrnet18"], input_nc, output_nc)
+    elif netG == 'hrnet32':
+        net = HighResolutionNet(MODEL_CONFIGS["hrnet32"], input_nc, output_nc)
+    elif netG == 'hrnet48':
+        net = HighResolutionNet(MODEL_CONFIGS["hrnet48"], input_nc, output_nc)
     else:
         raise NotImplementedError('Generator model name [%s] is not recognized' % netG)
     return init_net(net, init_type, init_gain, gpu_ids)
@@ -534,6 +554,9 @@ class UnetSkipConnectionBlock(nn.Module):
             return self.model(x)
         else:   # add skip connections
             return torch.cat([x, self.model(x)], 1)
+        
+
+
 
 
 class NLayerDiscriminator(nn.Module):
