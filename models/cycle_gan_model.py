@@ -51,7 +51,10 @@ class CycleGANModel(BaseModel):
             opt (Option class)-- stores all the experiment flags; needs to be a subclass of BaseOptions
         """
         BaseModel.__init__(self, opt)
+        torch.backends.cudnn.benchmark = True
         self.scaler = torch.amp.GradScaler()
+        self.discriminator_update_step = 2  # Update every 2 iterations
+        self.step_count = 0  # Initialize step counter
         # specify the training losses you want to print out. The training/test scripts will call <BaseModel.get_current_losses>
         self.loss_names = ['D_A', 'G_A', 'cycle_A', 'idt_A', 'D_B', 'G_B', 'cycle_B', 'idt_B']
         # specify the images you want to save/display. The training/test scripts will call <BaseModel.get_current_visuals>
@@ -92,8 +95,8 @@ class CycleGANModel(BaseModel):
             self.criterionCycle = torch.nn.L1Loss()
             self.criterionIdt = torch.nn.L1Loss()
             # initialize optimizers; schedulers will be automatically created by function <BaseModel.setup>.
-            self.optimizer_G = torch.optim.Adam(itertools.chain(self.netG_A.parameters(), self.netG_B.parameters()), lr=opt.lr, betas=(opt.beta1, 0.999))
-            self.optimizer_D = torch.optim.Adam(itertools.chain(self.netD_A.parameters(), self.netD_B.parameters()), lr=opt.lr, betas=(opt.beta1, 0.999))
+            self.optimizer_G = torch.optim.Adam(itertools.chain(self.netG_A.parameters(), self.netG_B.parameters()), lr=opt.lr, betas=(opt.beta1, 0.999), fused=True)
+            self.optimizer_D = torch.optim.Adam(itertools.chain(self.netD_A.parameters(), self.netD_B.parameters()), lr=opt.lr, betas=(opt.beta1, 0.999), fused=True)
             self.optimizers.append(self.optimizer_G)
             self.optimizers.append(self.optimizer_D)
 
@@ -173,21 +176,22 @@ class CycleGANModel(BaseModel):
         self.scaler.scale(self.loss_G).backward()
 
     def optimize_parameters(self):
-        # Forward
         self.forward()
 
-        # Update G
-        self.set_requires_grad([self.netD_A, self.netD_B], False)
+        # Update Generators every step
+        self.set_requires_grad([self.netD_A, self.netD_B], False)  # Freeze discriminators
         self.optimizer_G.zero_grad()
         self.backward_G()
         self.scaler.step(self.optimizer_G)
-
-        # Update D
-        self.set_requires_grad([self.netD_A, self.netD_B], True)
-        self.optimizer_D.zero_grad()
-        self.backward_D_A()
-        self.backward_D_B()
-        self.scaler.step(self.optimizer_D)
-
-        # Update scaler
         self.scaler.update()
+
+        # Update Discriminators less frequently
+        if self.step_count % self.discriminator_update_step == 0:
+            self.set_requires_grad([self.netD_A, self.netD_B], True)  # Unfreeze discriminators
+            self.optimizer_D.zero_grad()
+            self.backward_D_A()
+            self.backward_D_B()
+            self.scaler.step(self.optimizer_D)
+            self.scaler.update()
+
+        self.step_count += 1
