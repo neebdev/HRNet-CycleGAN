@@ -112,14 +112,14 @@ class CycleGANModel(BaseModel):
 
     def forward(self):
         """Run forward pass with mixed precision."""
-        with torch.amp.autocast():
+        with torch.amp.autocast('cuda'):
             self.fake_B = self.netG_A(self.real_A)
             self.rec_A = self.netG_B(self.fake_B)
             self.fake_A = self.netG_B(self.real_B)
             self.rec_B = self.netG_A(self.fake_A)
 
     def backward_D_basic(self, netD, real, fake):
-       with torch.amp.autocast():
+       with torch.amp.autocast('cuda'):
            pred_real = netD(real)
            loss_D_real = self.criterionGAN(pred_real, True)
 
@@ -134,13 +134,13 @@ class CycleGANModel(BaseModel):
     def backward_D_A(self):
         """Calculate GAN loss for discriminator D_A"""
         fake_B = self.fake_B_pool.query(self.fake_B)
-        with torch.amp.autocast():
+        with torch.amp.autocast('cuda'):
             self.loss_D_A = self.backward_D_basic(self.netD_A, self.real_B, fake_B)
 
     def backward_D_B(self):
         """Calculate GAN loss for discriminator D_B"""
         fake_A = self.fake_A_pool.query(self.fake_A)
-        with torch.amp.autocast():
+        with torch.amp.autocast('cuda'):
             self.loss_D_B = self.backward_D_basic(self.netD_B, self.real_A, fake_A)
 
     def backward_G(self):
@@ -148,7 +148,7 @@ class CycleGANModel(BaseModel):
         lambda_A = self.opt.lambda_A
         lambda_B = self.opt.lambda_B
 
-        with torch.amp.autocast():
+        with torch.amp.autocast('cuda'):
             # Identity loss
             if lambda_idt > 0:
                 self.idt_A = self.netG_A(self.real_B)
