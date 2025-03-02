@@ -53,7 +53,7 @@ class CycleGANModel(BaseModel):
         BaseModel.__init__(self, opt)
         torch.backends.cudnn.benchmark = True
         self.scaler = torch.amp.GradScaler()
-        self.discriminator_update_step = 2  # Update every 2 iterations
+        self.discriminator_update_step = 8  # Update every 8 iterations
         self.step_count = 0  # Initialize step counter
         # specify the training losses you want to print out. The training/test scripts will call <BaseModel.get_current_losses>
         self.loss_names = ['D_A', 'G_A', 'cycle_A', 'idt_A', 'D_B', 'G_B', 'cycle_B', 'idt_B']
